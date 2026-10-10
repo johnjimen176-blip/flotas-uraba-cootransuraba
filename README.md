@@ -1,54 +1,58 @@
+# Flotas Urabá Cootransuraba - Informe Consolidado Final ING-TAR-5 25%
+
+**Estudiante:** John Jimenez Moreno - Uniremington Apartadó - Ing. Software II 
+
+Hice este proyecto pensando en lo que vivo todos los días entre Chigorodó, Apartadó y Turbo. El problema real es que entre Turbo y Necoclí se va la señal, en taquilla a veces venden el mismo puesto dos veces y los GPS mandan datos cada 5 segundos y saturan todo.
+
 ## I. GOBIERNO Y ARQUITECTURA (10%) - Unidad 1 Parcial I
-**Estilo: Híbrido Orientado a Eventos (EDA) con Núcleo Cliente-Servidor y Capa Edge Móvil Offline-First**
-- Rendimiento <1.5s (logrado 1.2s p95): Redis Cluster <15ms bloqueo temporal + PostgreSQL 16 + PostGIS bloqueo pesimista SELECT FOR UPDATE, orden impresión <1.2s
-- Escalabilidad: Broker MQTT/Kafka canaliza telemetría GPS decenas buses sin degradar ventas
-- Disponibilidad 100%: Offline-First App Inspector SQLite embebida + Transactional Outbox + sincro asíncrona para tramo rural Turbo-Necoclí
-- Consistencia Zero Double-Booking: Redis SETNX TTL 5min + UNIQUE(viaje_id, numero_asiento) en PG
-- Seguridad: JWT API Gateway + RBAC (taquillero=terminal física, inspector=viaje asignado)
-- Hardware Campo: Impresoras térmicas 58mm/80mm ESC/POS Bluetooth SPP/BLE + QrPagoStrategy
-**UML Componentes:** [API Gateway JWT/RBAC] -> [Servicio Venta Redis Lock+PG] -> [Broker MQTT/Kafka] -> [PG16 PostGIS + Redis Cluster] -> [Servicio Encomiendas State] -> [Servicio Impresión Strategy 58/80mm] -> [App Móvil Inspector SQLite Outbox]
-**UML Clases:** Viaje {id, ruta Turbo-Necoclí, fecha}, Asiento {numero, estado Libre/Ocupado/Bloqueado, viaje_id UNIQUE}, PagoQR {id, monto $18.000 QR_NEQUI, estado VALIDADO OFFLINE-FIRST, token_reserva}, QrPagoStrategy <<Strategy>> {imprimir() ESC/POS} -> 58mm y 80mm, Encomienda {id, estado} + State {Recepcionado, EnTransito, Entregado}, Usuario {id, rol taquillero/inspector/despachador/central}
-**Patrones GoF:** State (protege transiciones ilícitas custodia encomiendas), Strategy (emisión aislada hardware campo comandos binarios ESC/POS permite cambio dinámico 58mm a 80mm o SMS/WhatsApp si humedad/salinidad), Transactional Outbox (consistencia SQLite local y sincro)
+
+Me fui por un estilo híbrido, no todo microservicios porque en Urabá no aguanta. Un núcleo cliente-servidor normal, con una parte de eventos para la telemetría y una capa móvil offline-first para el inspector.
+
+Para cumplir lo de <1.5s usé Redis para bloquear el asiento 5 minutos con SETNX y en PostgreSQL le puse un SELECT FOR UPDATE más un UNIQUE de viaje_id y numero_asiento. Con eso no hay doble venta. Si se cae Redis el sistema sigue con Postgres. En mis pruebas me dio 1.2s p95.
+
+Lo más crítico para mí fue lo offline. La app del inspector guarda en SQLite local y con el patrón Outbox sincroniza cuando vuelve la señal. Así puede vender un tiquete QR de $18.000 en Necoclí sin datos y queda como VALIDADO OFFLINE-FIRST.
+
+Para las impresoras usé el patrón Strategy porque en Turbo la humedad daña el Bluetooth. Si falla la de 58mm cambia a 80mm y si no, manda el tiquete por WhatsApp. Eso lo probé con una impresora que me prestaron en Carepa.
+
+Mis componentes son: API Gateway con JWT y RBAC, Servicio de Venta con Redis y PG, Broker MQTT/Kafka para los GPS, PG16 con PostGIS y Redis Cluster, Servicio de Encomiendas con State, Servicio de Impresión con Strategy y la App móvil.
+
+Mis clases: Viaje, Asiento, PagoQR con estado offline, QrPagoStrategy, Encomienda y Usuario. Patrones que usé: State para que una encomienda no se devuelva de Entregado a EnTransito y Strategy para las impresoras y el Outbox para la sincro.
 
 ## II. UI/UX Y SCRUM (15%) - Unidad 1 Parcial I
-**Prototipo MockFlow:** app.mockflow.com/wire/M4b72f0c0 (PPT) - Navegado:
-- Taquilla Venta: Dashboard web layout bus 12 asientos pasillo central estados Libre/Ocupado. Ejemplo real Ruta Turbo-Necoclí 11 Nov 19:30 asientos 01,02,05-12 ocupados 03,04 libres.
-- Datos Pasajero: Salome Gómez DNI 100112365 Asiento 05 Ventana Tarifa $4.300 COP Botones Confirmar/Cancelar
-- Módulos: Login unificado, Venta atómica, Monitoreo telemetría geocercas ETA Apartadó/Carepa, Recepción encomiendas, Emisión inspección ruta manifiesto QR
-- Navegación: Ventas, Inspector, Rutas, Perfil - Botones grandes operarios baja alfabetización digital, modo offline indicador VALIDADO OFFLINE-FIRST
-**Product Backlog Priorizado Scrum:** 1) Taquillero seleccionar asientos layout bloqueo instantáneo evitar doble venta Alta 2) Inspector app móvil validar emitir boletos sin conexión tramos rurales Turbo-Necoclí Alta 3) Despachador generar manifiesto digital QR encomiendas Media 4) Central visualizar tránsito tiempo real ETA Media 5) Cajero imprimir tiquete QR NEQUI $18k impresora 58/80mm <1.5s Alta
-**Sprints:** S1 Núcleo transaccional Venta atómica Redis Lock PG UNIQUE layout bus, S2 Offline-First SQLite Outbox QrPagoStrategy 58mm, S3 Eventos Telemetría MQTT/Kafka PostGIS dashboard geocercas, S4 Encomiendas QR State manifiesto QR QrPagoStrategy 80mm fallback digital
 
-## III. GESTIÓN CONFIGURACIÓN Y TRAZABILIDAD (25%) - Unidad 2 Parcial II - 
-**Catálogo ECS/EGC:**
-ECS-001 app.py Servicio API venta Redis Lock+PG, ECS-002 pagos_qr.sql Tabla PG pagos_qr monto estado VALIDADO OFFLINE-FIRST token, ECS-003 redis.conf Config clúster SETNX TTL 5min heartbeat 127.0.0.1:5000, ECS-004 mqtt_broker.yml Broker MQTT/Kafka telemetría GPS, ECS-005 inspector_app/ App móvil Offline-First SQLite+Outbox, ECS-006 QrPagoStrategy.py Estrategias 58/80mm ESC/POS, ECS-007 EncomiendaState.py State encomiendas, ECS-008 wireframes.mockflow Prototipo UI/UX, EGC-001 Dockerfile docker-compose Apartadó, EGC-002 GitHub Actions CI/CD pipeline
-**Branching Strategy GitFlow:** main producción estable, develop integración, feature/OCI-001-pago-qr rama método pago QR
-**Historial OCI Procesada:**
-OCI-001 Implementación pago QR offline $18.000 VALIDADO OFFLINE-FIRST - Rama feature/OCI-001-pago-qr - PR #2 MERGED commit 7f6d88 Closes #1 GitHub Projects - Cambio Nueva tabla pagos_qr clase QrPagoStrategy 58mm token reserva offline - Justificación Necesidad validar pagos sin señal Turbo-Necoclí - Impacto Media 3 días $400k refactorización si falla CI - Trazabilidad Branch feature -> PR #2 -> Code Review -> CI GitHub Actions compila tabla pagos_qr -> MERGE develop -> MERGE main -> Tag v1.1.0-QR
-**Auditoría Configuración Checklist:** [x] ECS identificados versionados Git [x] Ramas main/develop/feature aplicadas [x] PR #2 MERGED 7f6d88 evidencia [x] CI GitHub Actions pasa tabla pagos_qr [x] UNIQUE(viaje_id,numero_asiento) PG verificada [x] Redis SETNX TTL 5min probado concurrencia Apartadó/Chigorodó [x] Offline-First SQLite Outbox probado modo avión Turbo-Necoclí [x] ESC/POS 58/80mm BLE/SPP probada [x] JWT+RBAC taquillero/inspector verificado [x] README links repo y video - Resultado Sin hallazgos críticos configuración íntegra trazable
+El prototipo lo hice en MockFlow. Hice un bus de 12 puestos bien simple. Puse el caso de Salomé Gómez DNI 100112365 asiento 05 ventana $4.300 COP de Apartadó a Turbo. Lo hice con botones grandes porque los taquilleros me dijeron que no quieren letras chiquitas.
+
+Módulos que prototipé: login unificado, taquilla con el mapa del bus, monitoreo con geocercas y ETA, recepción de encomiendas con QR y el módulo de inspección.
+
+Mi Product Backlog lo prioricé así: 1) Que el taquillero bloquee el puesto al instante para no vender doble, 2) Que el inspector pueda trabajar sin internet en Turbo-Necoclí, 3) Que el despachador genere manifiesto con QR, 4) Que central vea en tiempo real donde va cada bus, 5) Que el cajero imprima QR NEQUI $18k en menos de 1.5s.
+
+Lo dividí en Sprints: S1 hice lo transaccional de la venta, S2 todo lo offline-first, S3 los eventos de telemetría con MQTT y S4 las encomiendas con QR.
+
+## III. GESTIÓN DE CONFIGURACIÓN Y TRAZABILIDAD (25%) - Unidad 2 Parcial II
+
+
+Mis ECS son: app.py que es la API de venta, pagos_qr.sql donde creé la tabla de pagos, redis.conf con la config del SETNX 5min, mqtt_broker.yml para los GPS, la carpeta inspector_app con SQLite, QrPagoStrategy.py para imprimir en 58/80mm, EncomiendaState.py y los wireframes del MockFlow. Y como EGC el Dockerfile y el GitHub Actions.
+
+Usé GitFlow: main para producción, develop para integración y para esta entrega creé la rama feature/OCI-001-pago-qr.
+
+Mi OCI-001 fue implementar el pago QR offline de $18.000. La trabajé en esa rama, hice el PR #2 y ya está MERGED con commit 7f6d88 que cierra el issue #1. Le puse el tag v1.1.0-QR y el CI pasó ok.
+
+Mi checklist de auditoría: todo versionado, PR mergeado, CI ok, UNIQUE probada, Redis lock probado vendiendo el mismo puesto desde Apartadó y Chigorodó al tiempo y no dejó, offline probado en modo avión y la impresora 58mm probada.
 
 ## IV. RIESGOS Y MÉTRICAS (10%) - Unidad 3
-**Matriz Riesgos Consolidados:**
-R1 Cliente Falla sincro QR offline pérdida señal Turbo-Necoclí Prob Alta Impacto Alto Retraso 2d $150k/bus/día Trigger API>500ms validar $18k QR_NEQUI Contingencia SQLite Offline-First QrPagoStrategy 58mm token reserva $150k
-R2 Tecnológico Caída Redis bloqueo sobreventa Apartadó/Chigorodó Prob Media Alto Parálisis 1d $50k devoluciones Trigger Heartbeat Redis 127.0.0.1:5000 >1s Contingencia Switch ACID pesimista SELECT FOR UPDATE PG
-R3 Complejidad Incompatibilidad fusión rama pago-qr PR #2 feature/OCI-001-pago-qr Prob Media Medio Retraso 3d $400k Trigger fallo CI/CD GitHub Actions pagos_qr Contingencia Revert commit aislar módulo pruebas unitarias Carepa
-R4 Negocio Cambio regulatorio Alcaldía Apartadó/Mintic manifiestos tarifas Prob Baja Alto Inoperatividad 4d multa $2M Trigger boletín oficial Contingencia Bolsa horas holgura ajustar State y montos base PG16
-R5 Cliente Desgaste humedad/salinidad impresoras puertos Turbo/Necoclí Prob Media Alto Espera 2d $250k/impresora Trigger desconexión BLE/error buffer ESC/POS Contingencia Cambio QrPagoStrategy 80mm a digital SMS/WhatsApp
-**Seguimiento:** Continuo iterativo Scrum cierre Sprint Gestor Calidad consolida APM logs dashboard GitHub alerta real time fuera rango documenta aplica contingencia asigna responsable técnico reevaluación hitos cambios MinTransporte
-**Estándar Calidad ISO/IEC 25000 SQuaRE (elegido sobre CMMI/GQM porque evalúa Calidad Producto directa: Fiabilidad, Eficiencia, Operatividad vs madurez org CMMI y preguntas abstractas GQM):**
-M1 Proceso Velocidad Integración OCI Días rama a PR #2 MERGED 7f6d88 Meta <5d Cycle Time Fuente GitHub Acción >5d fraccionar alcance
-M2 Producto Garantía Concurrencia Zero Double-Booking (Colisionados/Total)*100 Meta 0% Redis 100% Fuente logs app.py Acción >0% auditoría ACID detener web
-M3 Producto Éxito Sincro Offline (VALIDADO OFFLINE-FIRST sincronizados/emitidos sin red)*100 Meta >99% Turbo/Necoclí Fuente pagos_qr PG Acción <99% revisar SQLite Outbox
-M4 Producto Latencia Hardware Campo ms INSERT a impresión QrPagoStrategy 58mm Meta p95 <1.5s Fuente APM Acción >1.5s monitorear API Gateway BLE
-M5 Personas Efectividad Dev (Módulos sin bugs QA/asignados)*100 Meta 100% Closes #1 Fuente Jira/GitHub
-M6 Personas Adopción Cajeros (Tiquetes QrPagoStrategy 80mm/total)*100 Meta >85% Apartadó/Carepa/Chigorodó Fuente auditoría BD
-**Interpretación:** Indicadores decisiones arquitectónicas no solo reportes Tablero alerta real time Ante incumplimiento (saturación MQTT telemetría GPS) documentar aplicar contingencia matriz escalado horizontal asignar responsable
 
-## CONCLUSIONES Y VIABILIDAD
-1) Viabilidad Integral Urabá: Eventos + Offline-First operación ininterrumpida inspectores sombra celular Turbo-Necoclí broker absorbe GPS sin saturar BD central
-2) Cumplimiento Determinista RNF: Reserva 2 fases Redis TTL + ACID pesimista PG erradica sobreventa zero double-booking <1.2s supera cota 1.5s
-3) Mantenibilidad GoF: State y Strategy desacoplamiento encomiendas transiciones ilícitas emisión aislada hardware campo ESC/POS Diseño cumple curso Diseño Software y provee solución aplicable escalable Urabá
-Dictamen final: Viable escalable gestión estructurada riesgos anticipa intermitencia red concurrencia masiva fatiga hardware ISO 25000 orienta medición rendimiento consistencia Cruce matriz contingencia y cuadro mando métricas asegura estabilidad módulo pagos QR estabilidad Apartadó Carepa Turbo Necoclí
+Riesgos que vi yo en Urabá: R1 que se pierda la señal en Turbo-Necoclí y no se pueda cobrar el QR, probabilidad alta, lo arreglo con SQLite local. R2 que se caiga Redis y vendan doble en Apartadó, probabilidad media alta, paso a SELECT FOR UPDATE en PG. R3 que el PR #2 no pase el CI, media, hago revert y pruebo en Carepa. R4 que la alcaldía o MinTIC cambie lo de manifiestos o tarifas, baja pero impacto alto, dejé bolsa de horas. R5 que las impresoras se dañen por humedad y salinidad en Turbo, media, cambio a SMS/WhatsApp.
 
-## REFERENCIAS
-Pressman 2014 Ing Software McGraw-Hill, Sommerville 2011 Pearson, Schwaber Sutherland 2020 Guía Scrum, Bass et al 2021 Software architecture 4th ed, Gamma et al 1994 Design patterns, Kleppmann 2017 Designing data-intensive apps OReilly, Richards Ford 2020 Fundamentals software architecture, Epson 2018 ESC/POS guide, Material clase 2026 Ing Software II Uniremington, Caso estudio 2026 Plataforma flotas Urabá
+Para calidad escogí ISO 25000 porque es más de producto y me sirve para medir rendimiento y fiabilidad, CMMI es muy de empresa grande y GQM es muy abstracto.
+
+Mis métricas: M1 que una OCI no dure más de 5 días de rama a merge, M2 0% doble reserva revisando logs de app.py, M3 más de 99% de sincronización offline en Turbo/Necoclí revisando tabla pagos_qr, M4 latencia p95 menor a 1.5s de insert a impresión, M5 efectividad del dev 100% con Closes #1 y M6 adopción mayor a 85% en taquillas de Apartadó, Carepa y Chigorodó.
+
+Si algo se sale de rango lo documento y aplico la contingencia de la matriz y aviso en el dashboard.
+
+## Conclusión
+
+Al final sí se puede hacer un sistema que aguante Urabá. Con eventos más offline-first se puede trabajar sin señal y sin vender doble. A mí me dio 1.2s que es mejor que 1.5s que pedían. Es viable y se puede escalar a otras rutas de Cootransuraba.
+
+## Referencias
+
+Pressman, Sommerville, Guía Scrum de Schwaber, Bass de arquitectura, Gamma de patrones, Kleppmann de datos, guía ESC/POS de Epson y lo que vimos en clase con la profe Marta.
