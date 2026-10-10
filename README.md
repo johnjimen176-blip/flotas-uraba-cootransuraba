@@ -19,7 +19,7 @@
 **Product Backlog Priorizado Scrum:** 1) Taquillero seleccionar asientos layout bloqueo instantáneo evitar doble venta Alta 2) Inspector app móvil validar emitir boletos sin conexión tramos rurales Turbo-Necoclí Alta 3) Despachador generar manifiesto digital QR encomiendas Media 4) Central visualizar tránsito tiempo real ETA Media 5) Cajero imprimir tiquete QR NEQUI $18k impresora 58/80mm <1.5s Alta
 **Sprints:** S1 Núcleo transaccional Venta atómica Redis Lock PG UNIQUE layout bus, S2 Offline-First SQLite Outbox QrPagoStrategy 58mm, S3 Eventos Telemetría MQTT/Kafka PostGIS dashboard geocercas, S4 Encomiendas QR State manifiesto QR QrPagoStrategy 80mm fallback digital
 
-## III. GESTIÓN CONFIGURACIÓN Y TRAZABILIDAD (25%) - Unidad 2 Parcial II - ESTA ES LA QUE TE FALTÓ ANTES
+## III. GESTIÓN CONFIGURACIÓN Y TRAZABILIDAD (25%) - Unidad 2 Parcial II - 
 **Catálogo ECS/EGC:**
 ECS-001 app.py Servicio API venta Redis Lock+PG, ECS-002 pagos_qr.sql Tabla PG pagos_qr monto estado VALIDADO OFFLINE-FIRST token, ECS-003 redis.conf Config clúster SETNX TTL 5min heartbeat 127.0.0.1:5000, ECS-004 mqtt_broker.yml Broker MQTT/Kafka telemetría GPS, ECS-005 inspector_app/ App móvil Offline-First SQLite+Outbox, ECS-006 QrPagoStrategy.py Estrategias 58/80mm ESC/POS, ECS-007 EncomiendaState.py State encomiendas, ECS-008 wireframes.mockflow Prototipo UI/UX, EGC-001 Dockerfile docker-compose Apartadó, EGC-002 GitHub Actions CI/CD pipeline
 **Branching Strategy GitFlow:** main producción estable, develop integración, feature/OCI-001-pago-qr rama método pago QR
